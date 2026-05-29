@@ -1,13 +1,115 @@
-# plotjuggler_unitree_sdk2
+# PlotJuggler Unitree SDK2 Plugin
 
 中文 | [English](README.md)
 
-PlotJuggler 的 Unitree SDK2 DDS 插件包。
+PlotJuggler Unitree SDK2 插件。
 
 本仓库提供两个插件：
 
 - `Unitree SDK2 DDS`：DataStreamer 插件，通过 `unitree_sdk2` 订阅 DDS 话题，把强类型消息递归展开为 PlotJuggler 数值曲线。
 - `Unitree Robot View`：Toolbox 插件，读取 PlotJuggler 里已有的 `lowstate` IMU 和电机位置曲线，渲染 Unitree 机器人姿态。
+
+## 使用说明
+
+### 1. 下载插件
+
+从 GitHub Releases 下载对应版本的 Linux x86_64 bundle：
+
+```text
+plotjuggler-unitree-sdk2-<version>-linux-x86_64.tar.gz
+```
+
+解压到任意目录，例如：
+
+```bash
+mkdir -p ~/plotjuggler_plugins
+tar -xzf plotjuggler-unitree-sdk2-<version>-linux-x86_64.tar.gz \
+  -C ~/plotjuggler_plugins
+```
+
+解压后的目录就是 PlotJuggler 需要加载的插件目录，例如：
+
+```text
+~/plotjuggler_plugins/plotjuggler-unitree-sdk2-<version>-linux-x86_64/
+```
+
+### 2. 通过 PlotJuggler UI 添加插件目录
+
+打开 PlotJuggler，进入 `Preferences`，选择 `Plugins` 页签，在 `Plugin folders` 列表中点击 `Add`，选择上面解压得到的目录，然后确认并重启 PlotJuggler。
+
+重启后应能看到：
+
+- Streaming 面板里出现 `Unitree SDK2 DDS`
+- `Tools` 菜单里出现 `Unitree Robot View`
+
+也可以用命令行临时加载，不写入 Preferences：
+
+```bash
+plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2-<version>-linux-x86_64"
+```
+
+### 3. 读取 Unitree DDS 数据
+
+在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length 和 joystick field mode。
+
+点击 `Start` 后插件会扫描 DDS publications，显示话题列表。支持的类型会排在上面并默认勾选；如果机器人或 DDS publisher 后启动，点击 `Refresh` 重新扫描。确认后插件开始订阅所选话题并写入 PlotJuggler 曲线。
+
+曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
+
+```text
+lowstate/imu_state/rpy/0
+lowstate/motor_state/00/q
+sportmodestate/velocity/0
+```
+
+时间轴是从开始 streaming 起算的本地 elapsed seconds。
+
+### 4. 打开机器人姿态视图
+
+先用 `Unitree SDK2 DDS` 读取 `lowstate` 数据，再从 `Tools` / `Unitree Robot View` 打开姿态视图。Robot View 不直接订阅 DDS，只读取 PlotJuggler 中已有的曲线。
+
+Robot View 读取的数据：
+
+- `lowstate/imu_state/rpy/*` 或 `lowstate/imu_state/quaternion/*`
+- `lowstate/motor_state/NN/q`
+
+交互：
+
+- 左键拖拽旋转视角。
+- 鼠标滚轮缩放。
+- 双击重置相机。
+- 点击右上角坐标轴图标可对齐到对应轴。
+- 勾选 `Live` 时跟随最新数据；取消后可以拖动时间轴回放历史姿态。
+
+## 支持的消息
+
+插件按 DDS type 判断是否支持话题，不依赖固定 topic name。当前支持 Unitree SDK2 IDL 中的顶层消息类型，覆盖：
+
+- `unitree_go`
+- `unitree_hg`
+- `unitree_hg_doubleimu`
+- ROS2-style `std_msgs`、`geometry_msgs`、`sensor_msgs`、`nav_msgs`
+
+数值字段会递归展开；字符串导出为 `/length`；图片、点云、地图等大变长序列会限制展开数量，避免刷爆 PlotJuggler。
+
+扩展新消息时，把类型加入：
+
+```text
+include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
+```
+
+## Robot View 模型和关节顺序
+
+电机顺序遵循 Unitree SDK2 `LowState.motor_state[]` 顺序，不遵循 URDF 中 joint 出现顺序。Go2 示例顺序：
+
+```text
+FR_hip, FR_thigh, FR_calf,
+FL_hip, FL_thigh, FL_calf,
+RR_hip, RR_thigh, RR_calf,
+RL_hip, RL_thigh, RL_calf
+```
+
+当前 bundle 支持 A1、Aliengo、B1、B2、B2W、Go1、Go2、Go2W、G1 23DOF、G1 29DOF、G1-D、H1、H1-2、H2、R1、R1 AIR。
 
 ## 依赖策略
 
@@ -112,71 +214,6 @@ bundle/plotjuggler_unitree_sdk2/
 
 bundle 会用 `$ORIGIN` RPATH 从同目录加载 DDS runtime 库。Qt 和 PlotJuggler 库不打进 bundle，运行时使用当前 PlotJuggler 发行版自带的库。
 
-## 加载插件
-
-```bash
-plotjuggler --plugin_folders "$PWD/bundle/plotjuggler_unitree_sdk2"
-```
-
-在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length 和 joystick field mode。点击 `Start` 后插件会扫描 DDS publications，显示话题列表，支持的类型排在上面并默认勾选；`Refresh` 可以重新扫描。
-
-曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
-
-```text
-lowstate/imu_state/rpy/0
-lowstate/motor_state/00/q
-sportmodestate/velocity/0
-```
-
-时间轴是从开始 streaming 起算的本地 elapsed seconds。
-
-## 支持的消息
-
-插件按 DDS type 判断是否支持话题，不依赖固定 topic name。当前支持 Unitree SDK2 IDL 中的顶层消息类型，覆盖：
-
-- `unitree_go`
-- `unitree_hg`
-- `unitree_hg_doubleimu`
-- ROS2-style `std_msgs`、`geometry_msgs`、`sensor_msgs`、`nav_msgs`
-
-数值字段会递归展开；字符串导出为 `/length`；图片、点云、地图等大变长序列会限制展开数量，避免刷爆 PlotJuggler。
-
-扩展新消息时，把类型加入：
-
-```text
-include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
-```
-
-## Robot View
-
-打开方式：`Tools` / `Unitree Robot View`。
-
-Robot View 不直接订阅 DDS，只读取 PlotJuggler 中已有的曲线，通常由 `Unitree SDK2 DDS` DataStreamer 写入。
-
-读取的数据：
-
-- `lowstate/imu_state/rpy/*` 或 `lowstate/imu_state/quaternion/*`
-- `lowstate/motor_state/NN/q`
-
-电机顺序遵循 Unitree SDK2 `LowState.motor_state[]` 顺序，不遵循 URDF 中 joint 出现顺序。Go2 示例顺序：
-
-```text
-FR_hip, FR_thigh, FR_calf,
-FL_hip, FL_thigh, FL_calf,
-RR_hip, RR_thigh, RR_calf,
-RL_hip, RL_thigh, RL_calf
-```
-
-当前 bundle 支持 A1、Aliengo、B1、B2、B2W、Go1、Go2、Go2W、G1 23DOF、G1 29DOF、G1-D、H1、H1-2、H2、R1、R1 AIR。
-
-交互：
-
-- 左键拖拽旋转视角。
-- 鼠标滚轮缩放。
-- 双击重置相机。
-- 点击右上角坐标轴图标可对齐到对应轴。
-- 勾选 `Live` 时跟随最新数据；取消后可以拖动时间轴回放历史姿态。
-
 ## 打包和发布
 
 构建完成后生成 release 包：
@@ -188,8 +225,8 @@ scripts/package_bundle.sh 0.1.0
 输出：
 
 ```text
-dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz
-dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz.sha256
+dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz
+dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz.sha256
 ```
 
 GitHub Actions：

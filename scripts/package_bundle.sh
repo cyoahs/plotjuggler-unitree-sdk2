@@ -11,7 +11,7 @@ if [[ ! -d "${bundle_dir}" ]]; then
   exit 1
 fi
 
-package_name="plotjuggler_unitree_sdk2-${version}-${platform}"
+package_name="plotjuggler-unitree-sdk2-${version}-${platform}"
 package_dir="${dist_dir}/${package_name}"
 
 rm -rf "${package_dir}"

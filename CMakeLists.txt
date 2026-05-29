@@ -4,7 +4,7 @@ project(plotjuggler_unitree_sdk2
   VERSION 0.1.0
   LANGUAGES CXX)
 
-option(BUILD_PLUGIN "Build the PlotJuggler DataStreamer plugin" ON)
+option(BUILD_PLUGIN "Build the PlotJuggler Unitree SDK2 Plugin shared libraries" ON)
 option(BUILD_TESTING "Build smoke tests" ON)
 option(PJ_UNITREE_BUILD_BUNDLE "Copy plugin runtime files into PJ_UNITREE_BUNDLE_DIRECTORY after build" ON)
 option(PJ_UNITREE_COPY_ROBOT_ASSETS "Copy Unitree robot URDF and mesh assets into the runtime bundle" ON)

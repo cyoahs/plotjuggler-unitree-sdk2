@@ -1,13 +1,115 @@
-# plotjuggler_unitree_sdk2
+# PlotJuggler Unitree SDK2 Plugin
 
 [中文](README.zh.md) | English
 
-PlotJuggler plugin bundle for Unitree SDK2 DDS data.
+PlotJuggler Unitree SDK2 Plugin.
 
 This repository provides two plugins:
 
 - `Unitree SDK2 DDS`: a DataStreamer plugin that subscribes to DDS topics through `unitree_sdk2` and flattens strongly typed messages into numeric PlotJuggler series.
 - `Unitree Robot View`: a Toolbox plugin that renders Unitree robot posture from `lowstate` IMU and motor position series already loaded into PlotJuggler.
+
+## Usage
+
+### 1. Download the Plugin
+
+Download the Linux x86_64 bundle from GitHub Releases:
+
+```text
+plotjuggler-unitree-sdk2-<version>-linux-x86_64.tar.gz
+```
+
+Extract it to any directory, for example:
+
+```bash
+mkdir -p ~/plotjuggler_plugins
+tar -xzf plotjuggler-unitree-sdk2-<version>-linux-x86_64.tar.gz \
+  -C ~/plotjuggler_plugins
+```
+
+The extracted directory is the plugin folder that PlotJuggler should load:
+
+```text
+~/plotjuggler_plugins/plotjuggler-unitree-sdk2-<version>-linux-x86_64/
+```
+
+### 2. Add the Plugin Folder in PlotJuggler
+
+Open PlotJuggler, open `Preferences`, select the `Plugins` tab, click `Add` in the `Plugin folders` list, choose the extracted directory, confirm, and restart PlotJuggler.
+
+After restart, you should see:
+
+- `Unitree SDK2 DDS` in the Streaming panel
+- `Unitree Robot View` in the `Tools` menu
+
+You can also load the plugin folder temporarily from the command line without changing Preferences:
+
+```bash
+plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2-<version>-linux-x86_64"
+```
+
+### 3. Stream Unitree DDS Data
+
+In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, and joystick field mode.
+
+Press `Start` to scan DDS publications and select topics from the discovered list. Supported types are sorted first and selected by default. If the robot or DDS publisher starts later, press `Refresh` to scan again. After confirmation, the plugin subscribes to the selected topics and writes PlotJuggler series.
+
+Leading `unitree/` and `rt/` topic path components are removed from series names, for example:
+
+```text
+lowstate/imu_state/rpy/0
+lowstate/motor_state/00/q
+sportmodestate/velocity/0
+```
+
+The time axis is local elapsed seconds from the moment streaming starts.
+
+### 4. Open the Robot Posture View
+
+First stream `lowstate` data with `Unitree SDK2 DDS`, then open `Tools` / `Unitree Robot View`. Robot View does not subscribe to DDS by itself; it consumes the time series already loaded into PlotJuggler.
+
+Input series:
+
+- `lowstate/imu_state/rpy/*` or `lowstate/imu_state/quaternion/*`
+- `lowstate/motor_state/NN/q`
+
+Controls:
+
+- Drag with the left mouse button to rotate the camera.
+- Use the mouse wheel to zoom.
+- Double-click to reset the camera.
+- Click the top-right axis icon to align the view to an axis.
+- Keep `Live` checked to follow the latest data, or uncheck it and drag the timeline to replay older posture data.
+
+## Supported Messages
+
+Topic support is determined by DDS type, not by fixed topic names. Built-in support covers top-level Unitree SDK2 IDL message types under:
+
+- `unitree_go`
+- `unitree_hg`
+- `unitree_hg_doubleimu`
+- ROS2-style `std_msgs`, `geometry_msgs`, `sensor_msgs`, and `nav_msgs`
+
+Numeric fields are flattened recursively. Strings are exported as `/length`. Large variable-length sequences such as images, point clouds, and maps are size-limited to avoid flooding PlotJuggler.
+
+To add new message types, update:
+
+```text
+include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
+```
+
+## Robot View Models and Motor Order
+
+Motor order follows Unitree SDK2 `LowState.motor_state[]`, not URDF joint order. Go2 example:
+
+```text
+FR_hip, FR_thigh, FR_calf,
+FL_hip, FL_thigh, FL_calf,
+RR_hip, RR_thigh, RR_calf,
+RL_hip, RL_thigh, RL_calf
+```
+
+The current bundle supports A1, Aliengo, B1, B2, B2W, Go1, Go2, Go2W, G1 23DOF, G1 29DOF, G1-D, H1, H1-2, H2, R1, and R1 AIR.
 
 ## Dependency Policy
 
@@ -112,71 +214,6 @@ bundle/plotjuggler_unitree_sdk2/
 
 The bundle uses `$ORIGIN` RPATH for the DDS runtime libraries copied from Unitree SDK2. Qt and PlotJuggler libraries are intentionally not bundled; runtime users should rely on their installed PlotJuggler distribution.
 
-## Loading the Plugins
-
-```bash
-plotjuggler --plugin_folders "$PWD/bundle/plotjuggler_unitree_sdk2"
-```
-
-In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, and joystick field mode. Press `Start` to scan DDS publications and select topics from the discovered list; supported types are sorted first and selected by default. Use `Refresh` to rescan.
-
-Leading `unitree/` and `rt/` topic path components are removed from series names, for example:
-
-```text
-lowstate/imu_state/rpy/0
-lowstate/motor_state/00/q
-sportmodestate/velocity/0
-```
-
-The time axis is local elapsed seconds from the moment streaming starts.
-
-## Supported Messages
-
-Topic support is determined by DDS type, not by fixed topic names. Built-in support covers top-level Unitree SDK2 IDL message types under:
-
-- `unitree_go`
-- `unitree_hg`
-- `unitree_hg_doubleimu`
-- ROS2-style `std_msgs`, `geometry_msgs`, `sensor_msgs`, and `nav_msgs`
-
-Numeric fields are flattened recursively. Strings are exported as `/length`. Large variable-length sequences such as images, point clouds, and maps are size-limited to avoid flooding PlotJuggler.
-
-To add new message types, update:
-
-```text
-include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
-```
-
-## Robot View
-
-Open it from `Tools` / `Unitree Robot View`.
-
-Robot View does not subscribe to DDS by itself. It consumes the time series already imported into PlotJuggler, usually by the `Unitree SDK2 DDS` DataStreamer.
-
-Input series:
-
-- `lowstate/imu_state/rpy/*` or `lowstate/imu_state/quaternion/*`
-- `lowstate/motor_state/NN/q`
-
-Motor order follows Unitree SDK2 `LowState.motor_state[]`, not URDF joint order. Go2 example:
-
-```text
-FR_hip, FR_thigh, FR_calf,
-FL_hip, FL_thigh, FL_calf,
-RR_hip, RR_thigh, RR_calf,
-RL_hip, RL_thigh, RL_calf
-```
-
-The current bundle supports A1, Aliengo, B1, B2, B2W, Go1, Go2, Go2W, G1 23DOF, G1 29DOF, G1-D, H1, H1-2, H2, R1, and R1 AIR.
-
-Controls:
-
-- Drag with the left mouse button to rotate the camera.
-- Use the mouse wheel to zoom.
-- Double-click to reset the camera.
-- Click the top-right axis icon to align the view to an axis.
-- Keep `Live` checked to follow the latest data, or uncheck it and drag the timeline to replay older posture data.
-
 ## Packaging and Releases
 
 Create a release package after building:
@@ -188,8 +225,8 @@ scripts/package_bundle.sh 0.1.0
 Outputs:
 
 ```text
-dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz
-dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz.sha256
+dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz
+dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz.sha256
 ```
 
 GitHub Actions:

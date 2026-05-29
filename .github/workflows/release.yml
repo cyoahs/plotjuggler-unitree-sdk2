@@ -78,5 +78,5 @@ jobs:
             gh release create "${tag}" dist/*.tar.gz dist/*.sha256 \
               --target "${GITHUB_SHA}" \
               --title "${tag}" \
-              --notes "PlotJuggler Unitree SDK2 plugin bundle built against PlotJuggler ${PLOTJUGGLER_REF}."
+              --notes "PlotJuggler Unitree SDK2 Plugin bundle built against PlotJuggler ${PLOTJUGGLER_REF}."
           fi
