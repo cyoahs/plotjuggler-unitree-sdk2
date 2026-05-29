@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+  PLOTJUGGLER_REF: "3.17.2"
+
+jobs:
+  build:
+    name: Build plugin bundle
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init --depth 1 --recursive \
+            third_party/unitree_sdk2 \
+            third_party/unitree_ros_assets
+
+      - name: Install system dependencies
+        run: scripts/install_ubuntu_deps.sh
+
+      - name: Build PlotJuggler development prefix
+        run: |
+          PLOTJUGGLER_INSTALL_DIR="${RUNNER_TEMP}/plotjuggler-dev/install" \
+            scripts/build_plotjuggler_dev.sh
+          echo "PLOTJUGGLER_PREFIX=${RUNNER_TEMP}/plotjuggler-dev/install" >> "${GITHUB_ENV}"
+
+      - name: Configure plugin
+        run: cmake --preset ci
+
+      - name: Build plugin
+        run: cmake --build --preset ci --parallel 4
+
+      - name: Test
+        run: ctest --preset ci
+
+      - name: Package bundle
+        run: scripts/package_bundle.sh "ci-${GITHUB_SHA::7}"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plotjuggler-unitree-sdk2-bundle
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error

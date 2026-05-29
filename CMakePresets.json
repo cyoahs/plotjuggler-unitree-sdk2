@@ -1,0 +1,89 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 16,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "BUILD_PLUGIN": "ON",
+        "BUILD_TESTING": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "PJ_UNITREE_BUNDLE_DIRECTORY": "${sourceDir}/bundle/plotjuggler_unitree_sdk2"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Local development build",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_PREFIX_PATH": "$env{PLOTJUGGLER_PREFIX}"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI build",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_PREFIX_PATH": "$env{PLOTJUGGLER_PREFIX}"
+      }
+    },
+    {
+      "name": "smoke",
+      "displayName": "Message flattener smoke build",
+      "inherits": "base",
+      "cacheVariables": {
+        "BUILD_PLUGIN": "OFF",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "jobs": 4
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "jobs": 4
+    },
+    {
+      "name": "smoke",
+      "configurePreset": "smoke",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "smoke",
+      "configurePreset": "smoke",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

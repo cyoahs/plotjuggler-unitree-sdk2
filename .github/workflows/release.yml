@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+  PLOTJUGGLER_REF: "3.17.2"
+
+jobs:
+  release:
+    name: Build and publish release bundle
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            tag="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.version }}"
+            tag="v${version}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init --depth 1 --recursive \
+            third_party/unitree_sdk2 \
+            third_party/unitree_ros_assets
+
+      - name: Install system dependencies
+        run: scripts/install_ubuntu_deps.sh
+
+      - name: Build PlotJuggler development prefix
+        run: |
+          PLOTJUGGLER_INSTALL_DIR="${RUNNER_TEMP}/plotjuggler-dev/install" \
+            scripts/build_plotjuggler_dev.sh
+          echo "PLOTJUGGLER_PREFIX=${RUNNER_TEMP}/plotjuggler-dev/install" >> "${GITHUB_ENV}"
+
+      - name: Configure plugin
+        run: cmake --preset ci
+
+      - name: Build plugin
+        run: cmake --build --preset ci --parallel 4
+
+      - name: Test
+        run: ctest --preset ci
+
+      - name: Package bundle
+        run: scripts/package_bundle.sh "${{ steps.version.outputs.version }}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" dist/*.tar.gz dist/*.sha256 --clobber
+          else
+            gh release create "${tag}" dist/*.tar.gz dist/*.sha256 \
+              --target "${GITHUB_SHA}" \
+              --title "${tag}" \
+              --notes "PlotJuggler Unitree SDK2 plugin bundle built against PlotJuggler ${PLOTJUGGLER_REF}."
+          fi

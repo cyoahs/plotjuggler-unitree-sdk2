@@ -1,0 +1,41 @@
+# Local Git metadata used only when the workspace has a mounted/broken .git.
+.gitrepo/
+
+# Codex/agent runtime mounts.
+.agents/
+.codex/
+
+# Build trees and generated CMake files.
+build/
+build-*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+
+# Install, packaging, and runtime output.
+install/
+bundle/
+dist/
+*.tar
+*.tar.gz
+*.zip
+*.sha256
+
+# Local dependency caches. Required dependencies are declared as submodules or
+# downloaded by CI scripts instead of being vendored here.
+.deps/
+local_sysroot/
+third_party/debs/
+third_party/PlotJuggler/
+.plotjuggler_config/
+
+# Editor and OS noise.
+*.user
+*.swp
+*~
+.DS_Store

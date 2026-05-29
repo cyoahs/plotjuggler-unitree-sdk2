@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>plotjuggler_unitree_sdk2</name>
+  <version>0.1.0</version>
+  <description>PlotJuggler DataStreamer plugin for Unitree SDK2 DDS topics.</description>
+  <maintainer email="user@example.com">ycshao</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <depend>plotjuggler</depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
