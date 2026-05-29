@@ -1,12 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-  workflow_dispatch:
+  release:
+    types:
+      - published
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: "4"
