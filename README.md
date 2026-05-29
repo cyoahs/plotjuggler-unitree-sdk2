@@ -243,7 +243,7 @@ git push origin v0.1.0
 
 ## Licenses
 
-Project source code is MIT licensed; see `LICENSE`.
+Project source code is licensed under the permissive MIT License; see `LICENSE`. It allows copying, modification, redistribution, and commercial use, provided that the copyright and license notice are retained.
 
 Unitree SDK2 and Unitree ROS assets are BSD-3-Clause licensed. The release bundle copies:
 

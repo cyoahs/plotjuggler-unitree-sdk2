@@ -243,7 +243,7 @@ git push origin v0.1.0
 
 ## 许可证
 
-本项目源码使用 MIT License，见 `LICENSE`。
+本项目源码使用宽松的 MIT License，见 `LICENSE`。它允许复制、修改、再分发和商用，但需要保留版权和许可证声明。
 
 Unitree SDK2 和 Unitree ROS 资产使用 BSD-3-Clause。release bundle 会复制：
 
