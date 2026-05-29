@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version without the leading v"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -30,13 +24,8 @@ jobs:
       - name: Resolve version
         id: version
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#v}"
-            tag="${GITHUB_REF_NAME}"
-          else
-            version="${{ inputs.version }}"
-            tag="v${version}"
-          fi
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
