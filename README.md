@@ -1,38 +1,38 @@
 # plotjuggler_unitree_sdk2
 
-中文 | [English](README.en.md)
+[中文](README.zh.md) | English
 
-PlotJuggler 的 Unitree SDK2 DDS 插件包。
+PlotJuggler plugin bundle for Unitree SDK2 DDS data.
 
-本仓库提供两个插件：
+This repository provides two plugins:
 
-- `Unitree SDK2 DDS`：DataStreamer 插件，通过 `unitree_sdk2` 订阅 DDS 话题，把强类型消息递归展开为 PlotJuggler 数值曲线。
-- `Unitree Robot View`：Toolbox 插件，读取 PlotJuggler 里已有的 `lowstate` IMU 和电机位置曲线，渲染 Unitree 机器人姿态。
+- `Unitree SDK2 DDS`: a DataStreamer plugin that subscribes to DDS topics through `unitree_sdk2` and flattens strongly typed messages into numeric PlotJuggler series.
+- `Unitree Robot View`: a Toolbox plugin that renders Unitree robot posture from `lowstate` IMU and motor position series already loaded into PlotJuggler.
 
-## 依赖策略
+## Dependency Policy
 
-源码仓库只管理项目源码、CI 配置和必要依赖声明。构建目录、安装目录、运行 bundle、deb 缓存、本地 sysroot 和 PlotJuggler 源码克隆都不入库。
+The repository tracks project source, CI configuration, and required dependency declarations only. Build trees, install trees, generated bundles, deb caches, local sysroots, and PlotJuggler source checkouts are ignored.
 
-必要依赖：
+Required dependencies:
 
-- `third_party/unitree_sdk2`：Git submodule，提供 Unitree SDK2、DDS 类型定义和 DDS runtime 库。
-- `third_party/unitree_ros_assets`：Git submodule，提供 Robot View 使用的 URDF 和 mesh。
-- Qt：系统开发包依赖。
-- PlotJuggler：构建期开发前缀依赖，需要提供 `plotjugglerConfig.cmake` 和 `plotjuggler_base`，不作为本仓库 submodule。
+- `third_party/unitree_sdk2`: Git submodule for Unitree SDK2, DDS type definitions, and DDS runtime libraries.
+- `third_party/unitree_ros_assets`: Git submodule for Robot View URDF and mesh assets.
+- Qt: system development package dependency.
+- PlotJuggler: build-time development prefix dependency. It must provide `plotjugglerConfig.cmake` and `plotjuggler_base`; it is not a repository submodule.
 
-## 本地开发
+## Local Development
 
-### 1. 安装系统依赖
+### 1. Install System Dependencies
 
-Ubuntu 22.04/24.04：
+On Ubuntu 22.04/24.04:
 
 ```bash
 scripts/install_ubuntu_deps.sh
 ```
 
-这个脚本安装 CMake、Ninja、Qt5、PlotJuggler 构建依赖，以及本项目 CI 使用的基础开发包。
+This installs CMake, Ninja, Qt5, PlotJuggler build dependencies, and the base development packages used by CI.
 
-### 2. 初始化 submodule
+### 2. Initialize Submodules
 
 ```bash
 git submodule update --init --depth 1 --recursive \
@@ -40,30 +40,30 @@ git submodule update --init --depth 1 --recursive \
   third_party/unitree_ros_assets
 ```
 
-### 3. 准备 PlotJuggler 开发前缀
+### 3. Prepare a PlotJuggler Development Prefix
 
-如果已经安装 snap 版 PlotJuggler，可以直接使用它的开发前缀：
+If the Snap PlotJuggler package is available, reuse its development prefix:
 
 ```bash
 export PLOTJUGGLER_PREFIX=/snap/plotjuggler/current/usr/local
 ```
 
-如果没有可用前缀，脚本会临时下载并构建 PlotJuggler `3.17.2` 到 `.deps/plotjuggler-3.17.2`：
+If no development prefix is available, build PlotJuggler `3.17.2` into `.deps/plotjuggler-3.17.2`:
 
 ```bash
 scripts/build_plotjuggler_dev.sh
 export PLOTJUGGLER_PREFIX="$PWD/.deps/plotjuggler-3.17.2"
 ```
 
-### 4. 配置、构建、测试
+### 4. Configure, Build, and Test
 
-推荐的一键本地构建：
+Recommended local build:
 
 ```bash
 scripts/build_local_bundle.sh
 ```
 
-等价的 CMake preset 命令：
+Equivalent CMake preset commands:
 
 ```bash
 cmake --preset dev
@@ -71,7 +71,7 @@ cmake --build --preset dev --parallel 4
 ctest --preset dev
 ```
 
-只编译消息展开 smoke test，不依赖 Qt/PlotJuggler：
+Build only the message flattener smoke test, without Qt or PlotJuggler:
 
 ```bash
 cmake --preset smoke
@@ -79,24 +79,24 @@ cmake --build --preset smoke --parallel 4
 ctest --preset smoke
 ```
 
-### 5. 常用 CMake 选项
+### 5. Common CMake Options
 
-- `UNITREE_SDK2_ROOT=/path/to/unitree_sdk2`：覆盖默认 submodule。
-- `PJ_UNITREE_BUNDLE_DIRECTORY=/path/to/bundle`：指定运行 bundle 输出目录。
-- `PJ_UNITREE_BUILD_BUNDLE=OFF`：只构建 `.so`，不复制运行 bundle。
-- `PJ_UNITREE_COPY_ROBOT_ASSETS=OFF`：不复制 URDF/mesh，适合只改 DDS 插件时加速。
-- `PJ_PLUGIN_INSTALL_DIRECTORY=/path/to/plugin_dir`：`cmake --install` 时安装到指定 PlotJuggler 插件目录。
+- `UNITREE_SDK2_ROOT=/path/to/unitree_sdk2`: override the default submodule.
+- `PJ_UNITREE_BUNDLE_DIRECTORY=/path/to/bundle`: choose the runtime bundle output directory.
+- `PJ_UNITREE_BUILD_BUNDLE=OFF`: build the shared libraries only, without copying the runtime bundle.
+- `PJ_UNITREE_COPY_ROBOT_ASSETS=OFF`: skip URDF/mesh copying, useful when working only on the DDS plugin.
+- `PJ_PLUGIN_INSTALL_DIRECTORY=/path/to/plugin_dir`: install plugins to a specific PlotJuggler plugin directory with `cmake --install`.
 
-## 构建产物
+## Build Outputs
 
-原始构建产物：
+Raw build outputs:
 
 ```text
 build/dev/libplotjuggler_unitree_sdk2.so
 build/dev/libplotjuggler_unitree_robot_view.so
 ```
 
-默认运行 bundle：
+Default runtime bundle:
 
 ```text
 bundle/plotjuggler_unitree_sdk2/
@@ -110,17 +110,17 @@ bundle/plotjuggler_unitree_sdk2/
   licenses/
 ```
 
-bundle 会用 `$ORIGIN` RPATH 从同目录加载 DDS runtime 库。Qt 和 PlotJuggler 库不打进 bundle，运行时使用当前 PlotJuggler 发行版自带的库。
+The bundle uses `$ORIGIN` RPATH for the DDS runtime libraries copied from Unitree SDK2. Qt and PlotJuggler libraries are intentionally not bundled; runtime users should rely on their installed PlotJuggler distribution.
 
-## 加载插件
+## Loading the Plugins
 
 ```bash
 plotjuggler --plugin_folders "$PWD/bundle/plotjuggler_unitree_sdk2"
 ```
 
-在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length 和 joystick field mode。点击 `Start` 后插件会扫描 DDS publications，显示话题列表，支持的类型排在上面并默认勾选；`Refresh` 可以重新扫描。
+In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, and joystick field mode. Press `Start` to scan DDS publications and select topics from the discovered list; supported types are sorted first and selected by default. Use `Refresh` to rescan.
 
-曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
+Leading `unitree/` and `rt/` topic path components are removed from series names, for example:
 
 ```text
 lowstate/imu_state/rpy/0
@@ -128,20 +128,20 @@ lowstate/motor_state/00/q
 sportmodestate/velocity/0
 ```
 
-时间轴是从开始 streaming 起算的本地 elapsed seconds。
+The time axis is local elapsed seconds from the moment streaming starts.
 
-## 支持的消息
+## Supported Messages
 
-插件按 DDS type 判断是否支持话题，不依赖固定 topic name。当前支持 Unitree SDK2 IDL 中的顶层消息类型，覆盖：
+Topic support is determined by DDS type, not by fixed topic names. Built-in support covers top-level Unitree SDK2 IDL message types under:
 
 - `unitree_go`
 - `unitree_hg`
 - `unitree_hg_doubleimu`
-- ROS2-style `std_msgs`、`geometry_msgs`、`sensor_msgs`、`nav_msgs`
+- ROS2-style `std_msgs`, `geometry_msgs`, `sensor_msgs`, and `nav_msgs`
 
-数值字段会递归展开；字符串导出为 `/length`；图片、点云、地图等大变长序列会限制展开数量，避免刷爆 PlotJuggler。
+Numeric fields are flattened recursively. Strings are exported as `/length`. Large variable-length sequences such as images, point clouds, and maps are size-limited to avoid flooding PlotJuggler.
 
-扩展新消息时，把类型加入：
+To add new message types, update:
 
 ```text
 include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
@@ -149,16 +149,16 @@ include/plotjuggler_unitree_sdk2/unitree_message_flatten.h
 
 ## Robot View
 
-打开方式：`Tools` / `Unitree Robot View`。
+Open it from `Tools` / `Unitree Robot View`.
 
-Robot View 不直接订阅 DDS，只读取 PlotJuggler 中已有的曲线，通常由 `Unitree SDK2 DDS` DataStreamer 写入。
+Robot View does not subscribe to DDS by itself. It consumes the time series already imported into PlotJuggler, usually by the `Unitree SDK2 DDS` DataStreamer.
 
-读取的数据：
+Input series:
 
-- `lowstate/imu_state/rpy/*` 或 `lowstate/imu_state/quaternion/*`
+- `lowstate/imu_state/rpy/*` or `lowstate/imu_state/quaternion/*`
 - `lowstate/motor_state/NN/q`
 
-电机顺序遵循 Unitree SDK2 `LowState.motor_state[]` 顺序，不遵循 URDF 中 joint 出现顺序。Go2 示例顺序：
+Motor order follows Unitree SDK2 `LowState.motor_state[]`, not URDF joint order. Go2 example:
 
 ```text
 FR_hip, FR_thigh, FR_calf,
@@ -167,48 +167,48 @@ RR_hip, RR_thigh, RR_calf,
 RL_hip, RL_thigh, RL_calf
 ```
 
-当前 bundle 支持 A1、Aliengo、B1、B2、B2W、Go1、Go2、Go2W、G1 23DOF、G1 29DOF、G1-D、H1、H1-2、H2、R1、R1 AIR。
+The current bundle supports A1, Aliengo, B1, B2, B2W, Go1, Go2, Go2W, G1 23DOF, G1 29DOF, G1-D, H1, H1-2, H2, R1, and R1 AIR.
 
-交互：
+Controls:
 
-- 左键拖拽旋转视角。
-- 鼠标滚轮缩放。
-- 双击重置相机。
-- 点击右上角坐标轴图标可对齐到对应轴。
-- 勾选 `Live` 时跟随最新数据；取消后可以拖动时间轴回放历史姿态。
+- Drag with the left mouse button to rotate the camera.
+- Use the mouse wheel to zoom.
+- Double-click to reset the camera.
+- Click the top-right axis icon to align the view to an axis.
+- Keep `Live` checked to follow the latest data, or uncheck it and drag the timeline to replay older posture data.
 
-## 打包和发布
+## Packaging and Releases
 
-构建完成后生成 release 包：
+Create a release package after building:
 
 ```bash
 scripts/package_bundle.sh 0.1.0
 ```
 
-输出：
+Outputs:
 
 ```text
 dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz
 dist/plotjuggler_unitree_sdk2-0.1.0-linux-x86_64.tar.gz.sha256
 ```
 
-GitHub Actions：
+GitHub Actions:
 
-- `.github/workflows/ci.yml`：使用 `ci` preset 构建、测试、上传 bundle artifact。
-- `.github/workflows/release.yml`：推送 `v*` tag 后构建并发布 GitHub Release。
+- `.github/workflows/ci.yml`: builds with the `ci` preset, runs tests, and uploads a bundle artifact.
+- `.github/workflows/release.yml`: builds and publishes a GitHub Release when a `v*` tag is pushed.
 
-发布：
+Release:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## 许可证
+## Licenses
 
-本项目源码使用 MIT License，见 `LICENSE`。
+Project source code is MIT licensed; see `LICENSE`.
 
-Unitree SDK2 和 Unitree ROS 资产使用 BSD-3-Clause。release bundle 会复制：
+Unitree SDK2 and Unitree ROS assets are BSD-3-Clause licensed. The release bundle copies:
 
 - `licenses/unitree_sdk2_LICENSE`
 - `licenses/unitree_sdk2_thirdparty/`
