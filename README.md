@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-PlotJuggler Unitree SDK2 Plugin.
+[PlotJuggler](https://github.com/facontidavide/PlotJuggler) Unitree SDK2 Plugin.
 
 This repository provides two plugins:
 

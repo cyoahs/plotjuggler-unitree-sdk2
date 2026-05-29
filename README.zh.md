@@ -2,7 +2,7 @@
 
 中文 | [English](README.md)
 
-PlotJuggler Unitree SDK2 插件。
+[PlotJuggler](https://github.com/facontidavide/PlotJuggler) Unitree SDK2 插件。
 
 本仓库提供两个插件：
 
