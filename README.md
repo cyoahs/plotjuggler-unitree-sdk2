@@ -52,7 +52,11 @@ plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2
 
 In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, and joystick field mode.
 
+<img src="docs/images/unitree-sdk2-dds-settings.png" alt="Unitree SDK2 DDS settings dialog" width="360">
+
 Press `Start` to scan DDS publications and select topics from the discovered list. Supported types are sorted first and selected by default. If the robot or DDS publisher starts later, press `Refresh` to scan again. After confirmation, the plugin subscribes to the selected topics and writes PlotJuggler series.
+
+`Joystick fields` defaults to `Parsed structure`. In this mode, Unitree joystick data is decoded into fields such as `wireless_remote/buttons/*`, `wireless_remote/axes/*`, `joystick/buttons/*`, and `joystick/axes/*` instead of only exposing raw bytes or key bitmasks.
 
 Leading `unitree/` and `rt/` topic path components are removed from series names, for example:
 
@@ -67,6 +71,8 @@ The time axis is local elapsed seconds from the moment streaming starts.
 ### 4. Open the Robot Posture View
 
 First stream `lowstate` data with `Unitree SDK2 DDS`, then open `Tools` / `Unitree Robot View`. Robot View does not subscribe to DDS by itself; it consumes the time series already loaded into PlotJuggler.
+
+![Unitree Robot View showing a G1 posture replay](docs/images/unitree-robot-view-g1.png)
 
 Input series:
 

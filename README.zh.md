@@ -52,7 +52,11 @@ plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2
 
 在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length 和 joystick field mode。
 
+<img src="docs/images/unitree-sdk2-dds-settings.png" alt="Unitree SDK2 DDS 设置面板" width="360">
+
 点击 `Start` 后插件会扫描 DDS publications，显示话题列表。支持的类型会排在上面并默认勾选；如果机器人或 DDS publisher 后启动，点击 `Refresh` 重新扫描。确认后插件开始订阅所选话题并写入 PlotJuggler 曲线。
+
+`Joystick fields` 默认是 `Parsed structure`。这个模式会把 Unitree joystick 数据解析成 `wireless_remote/buttons/*`、`wireless_remote/axes/*`、`joystick/buttons/*`、`joystick/axes/*` 这类结构化字段，而不是只暴露原始字节或 key bitmask。
 
 曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
 
@@ -67,6 +71,8 @@ sportmodestate/velocity/0
 ### 4. 打开机器人姿态视图
 
 先用 `Unitree SDK2 DDS` 读取 `lowstate` 数据，再从 `Tools` / `Unitree Robot View` 打开姿态视图。Robot View 不直接订阅 DDS，只读取 PlotJuggler 中已有的曲线。
+
+![Unitree Robot View 中的 G1 姿态回放](docs/images/unitree-robot-view-g1.png)
 
 Robot View 读取的数据：
 
