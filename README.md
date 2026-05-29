@@ -231,7 +231,7 @@ dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz.sha256
 
 GitHub Actions:
 
-- `.github/workflows/ci.yml`: builds with the `ci` preset, runs tests, and uploads a bundle artifact.
+- `.github/workflows/ci.yml`: builds with the `ci` preset, runs tests, and uploads a bundle artifact. CI uses a Release build and 2 parallel compile jobs to match the standard `ubuntu-22.04` GitHub-hosted runner resource profile.
 - `.github/workflows/release.yml`: builds and publishes a GitHub Release when a `v*` tag is pushed.
 
 Release:

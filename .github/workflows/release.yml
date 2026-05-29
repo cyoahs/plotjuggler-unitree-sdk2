@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 env:
-  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
   PLOTJUGGLER_REF: "3.17.2"
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
         run: cmake --preset ci
 
       - name: Build plugin
-        run: cmake --build --preset ci --parallel 4
+        run: cmake --build --preset ci --parallel "${CMAKE_BUILD_PARALLEL_LEVEL}"
 
       - name: Test
         run: ctest --preset ci

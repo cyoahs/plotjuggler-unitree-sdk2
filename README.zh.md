@@ -231,7 +231,7 @@ dist/plotjuggler-unitree-sdk2-0.1.0-linux-x86_64.tar.gz.sha256
 
 GitHub Actions：
 
-- `.github/workflows/ci.yml`：使用 `ci` preset 构建、测试、上传 bundle artifact。
+- `.github/workflows/ci.yml`：使用 `ci` preset 构建、测试、上传 bundle artifact。CI 使用 Release 构建和 2 路并行编译，以匹配标准 `ubuntu-22.04` GitHub-hosted runner 的资源规格。
 - `.github/workflows/release.yml`：推送 `v*` tag 后构建并发布 GitHub Release。
 
 发布：
