@@ -137,7 +137,7 @@ scripts/install_ubuntu_deps.sh
 ### 2. 初始化 submodule
 
 ```bash
-git submodule update --init --depth 1 --recursive \
+git submodule update --init --depth 1 \
   third_party/unitree_sdk2 \
   third_party/unitree_ros_assets
 ```

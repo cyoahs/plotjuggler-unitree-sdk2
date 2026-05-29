@@ -10,7 +10,7 @@ bundle_dir="${PJ_UNITREE_BUNDLE_DIRECTORY:-${PWD}/bundle/plotjuggler_unitree_sdk
 preset="${CMAKE_PRESET:-dev}"
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git submodule update --init --depth 1 --recursive \
+  git submodule update --init --depth 1 \
     third_party/unitree_sdk2 \
     third_party/unitree_ros_assets
 else
