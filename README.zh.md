@@ -96,7 +96,7 @@ Robot View 读取的数据：
 - `unitree_hg_doubleimu`
 - ROS2-style `std_msgs`、`geometry_msgs`、`sensor_msgs`、`nav_msgs`
 
-数值字段会递归展开；字符串导出为 `/length`；图片、点云、地图等大变长序列会限制展开数量，避免刷爆 PlotJuggler。
+数值字段会递归展开；字符串导出为 `/length`；如果字符串内容是合法 JSON，JSON 中的数值和布尔叶子节点也会导出到 `/json/...`。图片、点云、地图等大变长序列会限制展开数量，避免刷爆 PlotJuggler。
 
 扩展新消息时，把类型加入：
 

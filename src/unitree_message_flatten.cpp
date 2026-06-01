@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
@@ -54,6 +58,407 @@ std::string joinPrefix(const std::string& prefix, std::size_t index)
     return twoDigits(index);
   }
   return prefix + "/" + twoDigits(index);
+}
+
+std::string sanitizeJsonKey(const std::string& key)
+{
+  std::string sanitized;
+  sanitized.reserve(key.size());
+  bool previous_was_underscore = false;
+  for (char ch : key)
+  {
+    const auto byte = static_cast<unsigned char>(ch);
+    const bool keep = std::isalnum(byte) || ch == '_' || ch == '-' || ch == '.';
+    if (keep)
+    {
+      sanitized.push_back(ch);
+      previous_was_underscore = false;
+    }
+    else if (!previous_was_underscore)
+    {
+      sanitized.push_back('_');
+      previous_was_underscore = true;
+    }
+  }
+  while (!sanitized.empty() && sanitized.back() == '_')
+  {
+    sanitized.pop_back();
+  }
+  return sanitized.empty() ? "_" : sanitized;
+}
+
+class JsonNumericParser
+{
+public:
+  JsonNumericParser(const std::string& text, std::string root_prefix)
+      : text_(text), root_prefix_(std::move(root_prefix))
+  {
+  }
+
+  bool parse()
+  {
+    if (!parseValue(root_prefix_))
+    {
+      return false;
+    }
+    skipWhitespace();
+    if (pos_ != text_.size())
+    {
+      return false;
+    }
+    if (truncated_)
+    {
+      samples_.push_back({root_prefix_ + "/truncated", 1.0});
+    }
+    return true;
+  }
+
+  void emitTo(const SampleSink& sink) const
+  {
+    for (const auto& sample : samples_)
+    {
+      sink(sample.first, sample.second);
+    }
+  }
+
+private:
+  static constexpr std::size_t kMaxJsonSamples = 1024;
+
+  bool parseValue(const std::string& path)
+  {
+    skipWhitespace();
+    if (pos_ >= text_.size())
+    {
+      return false;
+    }
+
+    switch (text_[pos_])
+    {
+      case '{':
+        return parseObject(path);
+      case '[':
+        return parseArray(path);
+      case '"':
+        return parseString(nullptr);
+      case 't':
+        if (!consumeLiteral("true"))
+        {
+          return false;
+        }
+        addJsonSample(path, 1.0);
+        return true;
+      case 'f':
+        if (!consumeLiteral("false"))
+        {
+          return false;
+        }
+        addJsonSample(path, 0.0);
+        return true;
+      case 'n':
+        return consumeLiteral("null");
+      default:
+        if (text_[pos_] == '-' || std::isdigit(static_cast<unsigned char>(text_[pos_])))
+        {
+          double value = 0.0;
+          if (!parseNumber(&value))
+          {
+            return false;
+          }
+          addJsonSample(path, value);
+          return true;
+        }
+        return false;
+    }
+  }
+
+  bool parseObject(const std::string& path)
+  {
+    if (!consume('{'))
+    {
+      return false;
+    }
+    skipWhitespace();
+    if (consume('}'))
+    {
+      return true;
+    }
+
+    while (true)
+    {
+      std::string key;
+      if (!parseString(&key))
+      {
+        return false;
+      }
+      skipWhitespace();
+      if (!consume(':'))
+      {
+        return false;
+      }
+      const std::string child_path = path + "/" + sanitizeJsonKey(key);
+      if (!parseValue(child_path))
+      {
+        return false;
+      }
+      skipWhitespace();
+      if (consume('}'))
+      {
+        return true;
+      }
+      if (!consume(','))
+      {
+        return false;
+      }
+      skipWhitespace();
+    }
+  }
+
+  bool parseArray(const std::string& path)
+  {
+    if (!consume('['))
+    {
+      return false;
+    }
+    skipWhitespace();
+    if (consume(']'))
+    {
+      return true;
+    }
+
+    std::size_t index = 0;
+    while (true)
+    {
+      if (!parseValue(joinPrefix(path, index)))
+      {
+        return false;
+      }
+      ++index;
+      skipWhitespace();
+      if (consume(']'))
+      {
+        return true;
+      }
+      if (!consume(','))
+      {
+        return false;
+      }
+      skipWhitespace();
+    }
+  }
+
+  bool parseString(std::string* output)
+  {
+    if (!consume('"'))
+    {
+      return false;
+    }
+
+    while (pos_ < text_.size())
+    {
+      const char ch = text_[pos_++];
+      if (ch == '"')
+      {
+        return true;
+      }
+      if (static_cast<unsigned char>(ch) < 0x20)
+      {
+        return false;
+      }
+      if (ch != '\\')
+      {
+        if (output)
+        {
+          output->push_back(ch);
+        }
+        continue;
+      }
+
+      if (pos_ >= text_.size())
+      {
+        return false;
+      }
+      const char escape = text_[pos_++];
+      switch (escape)
+      {
+        case '"':
+        case '\\':
+        case '/':
+          if (output)
+          {
+            output->push_back(escape);
+          }
+          break;
+        case 'b':
+        case 'f':
+        case 'n':
+        case 'r':
+        case 't':
+          if (output)
+          {
+            output->push_back('_');
+          }
+          break;
+        case 'u':
+          if (!consumeHexQuad())
+          {
+            return false;
+          }
+          if (output)
+          {
+            output->push_back('_');
+          }
+          break;
+        default:
+          return false;
+      }
+    }
+    return false;
+  }
+
+  bool parseNumber(double* value)
+  {
+    const std::size_t start = pos_;
+    if (text_[pos_] == '-')
+    {
+      ++pos_;
+      if (pos_ >= text_.size())
+      {
+        return false;
+      }
+    }
+
+    if (text_[pos_] == '0')
+    {
+      ++pos_;
+    }
+    else if (std::isdigit(static_cast<unsigned char>(text_[pos_])))
+    {
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])))
+      {
+        ++pos_;
+      }
+    }
+    else
+    {
+      return false;
+    }
+
+    if (pos_ < text_.size() && text_[pos_] == '.')
+    {
+      ++pos_;
+      const std::size_t fraction_start = pos_;
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])))
+      {
+        ++pos_;
+      }
+      if (fraction_start == pos_)
+      {
+        return false;
+      }
+    }
+
+    if (pos_ < text_.size() && (text_[pos_] == 'e' || text_[pos_] == 'E'))
+    {
+      ++pos_;
+      if (pos_ < text_.size() && (text_[pos_] == '+' || text_[pos_] == '-'))
+      {
+        ++pos_;
+      }
+      const std::size_t exponent_start = pos_;
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_])))
+      {
+        ++pos_;
+      }
+      if (exponent_start == pos_)
+      {
+        return false;
+      }
+    }
+
+    char* end = nullptr;
+    errno = 0;
+    const double parsed = std::strtod(text_.c_str() + start, &end);
+    if (end != text_.c_str() + pos_ || errno == ERANGE || !std::isfinite(parsed))
+    {
+      return false;
+    }
+    *value = parsed;
+    return true;
+  }
+
+  bool consumeLiteral(const char* literal)
+  {
+    const std::size_t start = pos_;
+    for (const char* cursor = literal; *cursor != '\0'; ++cursor)
+    {
+      if (pos_ >= text_.size() || text_[pos_] != *cursor)
+      {
+        pos_ = start;
+        return false;
+      }
+      ++pos_;
+    }
+    return true;
+  }
+
+  bool consume(char expected)
+  {
+    if (pos_ >= text_.size() || text_[pos_] != expected)
+    {
+      return false;
+    }
+    ++pos_;
+    return true;
+  }
+
+  bool consumeHexQuad()
+  {
+    for (int index = 0; index < 4; ++index)
+    {
+      if (pos_ >= text_.size() ||
+          !std::isxdigit(static_cast<unsigned char>(text_[pos_])))
+      {
+        return false;
+      }
+      ++pos_;
+    }
+    return true;
+  }
+
+  void skipWhitespace()
+  {
+    while (pos_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[pos_])))
+    {
+      ++pos_;
+    }
+  }
+
+  void addJsonSample(const std::string& path, double value)
+  {
+    if (samples_.size() < kMaxJsonSamples)
+    {
+      samples_.push_back({path, value});
+    }
+    else
+    {
+      truncated_ = true;
+    }
+  }
+
+  const std::string& text_;
+  const std::string root_prefix_;
+  std::size_t pos_ = 0;
+  bool truncated_ = false;
+  std::vector<std::pair<std::string, double>> samples_;
+};
+
+void addJsonFieldsIfValid(const SampleSink& sink, const std::string& name, const std::string& text)
+{
+  JsonNumericParser parser(text, name + "/json");
+  if (parser.parse())
+  {
+    parser.emitTo(sink);
+  }
 }
 
 template <typename> struct IsStdArray : std::false_type
@@ -302,6 +707,7 @@ void flattenValue(const SampleSink& sink, const std::string& name, const Value& 
   else if constexpr (IsStdString<Decayed>::value)
   {
     addScalar(sink, name + "/length", value.size());
+    addJsonFieldsIfValid(sink, name, value);
   }
   else if constexpr (IsStdArray<Decayed>::value)
   {

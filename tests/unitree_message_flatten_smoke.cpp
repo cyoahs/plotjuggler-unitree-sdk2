@@ -105,6 +105,39 @@ int main()
     return 1;
   }
 
+  std_msgs::msg::dds_::String_ json_string;
+  json_string.data(R"({"state":{"x":1.5,"enabled":true},"samples":[2,-3.25],"label":"skip"})");
+
+  std::vector<Sample> json_samples;
+  pju::flattenMessage(json_string, [&](const std::string& field, double value) {
+    json_samples.push_back({field, value});
+  });
+
+  if (!hasField(json_samples, "data/length") ||
+      !hasValue(json_samples, "data/json/state/x", 1.5) ||
+      !hasValue(json_samples, "data/json/state/enabled", 1.0) ||
+      !hasValue(json_samples, "data/json/samples/00", 2.0) ||
+      !hasValue(json_samples, "data/json/samples/01", -3.25) ||
+      hasField(json_samples, "data/json/label"))
+  {
+    std::cerr << "JSON string flattening missed expected numeric fields\n";
+    return 1;
+  }
+
+  std_msgs::msg::dds_::String_ plain_string;
+  plain_string.data("not json");
+
+  std::vector<Sample> plain_samples;
+  pju::flattenMessage(plain_string, [&](const std::string& field, double value) {
+    plain_samples.push_back({field, value});
+  });
+
+  if (!hasField(plain_samples, "data/length") || hasField(plain_samples, "data/json"))
+  {
+    std::cerr << "Plain string should not produce JSON fields\n";
+    return 1;
+  }
+
   if (pju::normalizeTopicPrefix("/rt//lowstate/") != "rt/lowstate")
   {
     std::cerr << "Topic normalization failed\n";

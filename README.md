@@ -96,7 +96,7 @@ Topic support is determined by DDS type, not by fixed topic names. Built-in supp
 - `unitree_hg_doubleimu`
 - ROS2-style `std_msgs`, `geometry_msgs`, `sensor_msgs`, and `nav_msgs`
 
-Numeric fields are flattened recursively. Strings are exported as `/length`. Large variable-length sequences such as images, point clouds, and maps are size-limited to avoid flooding PlotJuggler.
+Numeric fields are flattened recursively. Strings are exported as `/length`; if a string contains valid JSON, numeric and boolean JSON leaves are also exported under `/json/...`. Large variable-length sequences such as images, point clouds, and maps are size-limited to avoid flooding PlotJuggler.
 
 To add new message types, update:
 
