@@ -454,8 +454,17 @@ public:
         "Keep original fields and add top-level motorstate* and motorcmd* groups.\n"
         "lowstate/motor_state/00/q -> motorstate*/q/00\n"
         "lowcmd/motor_cmd/00/kp -> motorcmd*/kp/00\n"
-        "PD torque fields are also flattened when both options are enabled.");
+        "Enabled PD torque and power fields are also flattened.");
     enhancements->addWidget(motor_fields_flatten_);
+    joint_power_ = new QCheckBox("Joint power (des, est)");
+    joint_power_->setObjectName("jointPowerEnhancement");
+    joint_power_->setToolTip(
+        "Signed mechanical power in watts, computed on each LowState.\n"
+        "power_des = tau_des * LowState.dq\n"
+        "power_est = LowState.tau_est * LowState.dq\n"
+        "Desired power uses the latest LowCmd (zero-order hold), including PD terms,\n"
+        "even when PD torque output is unchecked. Estimated power needs only LowState.");
+    enhancements->addWidget(joint_power_);
     form->addRow("Data enhancement", enhancements);
     main_layout->addLayout(form);
 
@@ -479,6 +488,7 @@ public:
         static_cast<JoystickOutputMode>(joystick_output_mode_->currentData().toInt());
     config.pd_torque_enabled = pd_torque_->isChecked();
     config.motor_fields_flatten_enabled = motor_fields_flatten_->isChecked();
+    config.joint_power_enabled = joint_power_->isChecked();
     config.topics = previous_topics_;
     return config;
   }
@@ -488,6 +498,7 @@ private:
   {
     pd_torque_->setChecked(previous.pd_torque_enabled);
     motor_fields_flatten_->setChecked(previous.motor_fields_flatten_enabled);
+    joint_power_->setChecked(previous.joint_power_enabled);
     const int joystick_index =
         joystick_output_mode_->findData(static_cast<int>(previous.joystick_output_mode));
     if (joystick_index >= 0)
@@ -503,6 +514,7 @@ private:
   QComboBox* joystick_output_mode_ = nullptr;
   QCheckBox* pd_torque_ = nullptr;
   QCheckBox* motor_fields_flatten_ = nullptr;
+  QCheckBox* joint_power_ = nullptr;
   std::vector<TopicSelection> previous_topics_;
 };
 
@@ -835,6 +847,7 @@ bool UnitreeDataStreamer::xmlSaveState(QDomDocument& doc, QDomElement& parent_el
   config.setAttribute("joystick_output_mode", static_cast<int>(config_.joystick_output_mode));
   config.setAttribute("pd_torque_enabled", config_.pd_torque_enabled);
   config.setAttribute("motor_fields_flatten_enabled", config_.motor_fields_flatten_enabled);
+  config.setAttribute("joint_power_enabled", config_.joint_power_enabled);
 
   QDomElement topics = doc.createElement("topics");
   for (const TopicSelection& selection : config_.topics)
@@ -868,6 +881,7 @@ bool UnitreeDataStreamer::xmlLoadState(const QDomElement& parent_element)
   config_.pd_torque_enabled = boolAttribute(
       config, "pd_torque_enabled", boolAttribute(config, "data_enhancement_enabled", true));
   config_.motor_fields_flatten_enabled = boolAttribute(config, "motor_fields_flatten_enabled", false);
+  config_.joint_power_enabled = boolAttribute(config, "joint_power_enabled", false);
   config_.joystick_output_mode = static_cast<JoystickOutputMode>(
       config
           .attribute("joystick_output_mode",
@@ -928,7 +942,9 @@ void UnitreeDataStreamer::showSettingsDialog()
   {
     std::lock_guard<std::mutex> callback_lock(callback_mutex_);
     const StreamConfig new_config = dialog.config();
-    if (config_.pd_torque_enabled != new_config.pd_torque_enabled)
+    const bool was_computing = config_.pd_torque_enabled || config_.joint_power_enabled;
+    const bool will_compute = new_config.pd_torque_enabled || new_config.joint_power_enabled;
+    if (was_computing != will_compute)
     {
       data_enhancement_.clear();
     }
@@ -965,6 +981,7 @@ void UnitreeDataStreamer::loadDefaultSettings()
                      settings.value(group + "/data_enhancement_enabled", true)).toBool();
   config_.motor_fields_flatten_enabled =
       settings.value(group + "/motor_fields_flatten_enabled", false).toBool();
+  config_.joint_power_enabled = settings.value(group + "/joint_power_enabled", false).toBool();
   config_.joystick_output_mode = static_cast<JoystickOutputMode>(
       settings
           .value(group + "/joystick_output_mode",
@@ -986,6 +1003,7 @@ void UnitreeDataStreamer::saveDefaultSettings() const
   settings.setValue(group + "/clear_existing_data", config_.clear_existing_data);
   settings.setValue(group + "/pd_torque_enabled", config_.pd_torque_enabled);
   settings.setValue(group + "/motor_fields_flatten_enabled", config_.motor_fields_flatten_enabled);
+  settings.setValue(group + "/joint_power_enabled", config_.joint_power_enabled);
   settings.setValue(group + "/joystick_output_mode",
                     static_cast<int>(config_.joystick_output_mode));
 
@@ -1123,9 +1141,11 @@ template <typename Msg> void UnitreeDataStreamer::addSubscriber(const TopicSelec
                          [&sink, &topic_prefix](const std::string& field, double value)
                          { sink(topic_prefix + "/" + field, value); });
 
-          if (config_.pd_torque_enabled)
+          if (config_.pd_torque_enabled || config_.joint_power_enabled)
           {
-            data_enhancement_.update(topic_prefix, message, sink);
+            const DataEnhancementOptions options{config_.pd_torque_enabled,
+                                                  config_.joint_power_enabled};
+            data_enhancement_.update(topic_prefix, message, sink, options);
           }
 
           const uint64_t count = ++total_messages_;

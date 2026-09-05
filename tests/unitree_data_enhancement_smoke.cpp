@@ -4,6 +4,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace pju = plotjuggler_unitree_sdk2;
@@ -190,69 +191,173 @@ template <typename LowCmd, typename LowState> void checkEnhancementOptions()
     double stamp;
     double value;
   };
-  for (bool pd_enabled : {false, true})
+  for (int flags = 0; flags < 8; ++flags)
   {
-    for (bool flatten_enabled : {false, true})
+    const bool pd_enabled = (flags & 1) != 0;
+    const bool flatten_enabled = (flags & 2) != 0;
+    const bool power_enabled = (flags & 4) != 0;
+    const pju::DataEnhancementOptions options{pd_enabled, power_enabled};
+    pju::UnitreeDataEnhancement enhancement;
+    std::map<std::string, std::vector<Sample>> samples;
+    const auto feed = [&](const std::string& topic, const auto& message, double stamp)
     {
-      pju::UnitreeDataEnhancement enhancement;
-      std::map<std::string, std::vector<Sample>> samples;
-      const auto feed = [&](const std::string& topic, const auto& message, double stamp)
-      {
-        const auto sink = pju::withMotorFieldAliases(
-            topic, flatten_enabled, [&](const std::string& series, double value)
-            { samples[series].push_back({stamp, value}); });
-        pju::flattenMessage(message, [&](const std::string& field, double value)
-                            { sink(topic + "/" + field, value); });
-        if (pd_enabled)
-        {
-          enhancement.update(topic, message, sink);
-        }
-      };
-      LowCmd command;
-      LowState state;
-      command.motor_cmd()[0].q() = 1.5F;
-      command.motor_cmd()[0].kp() = 4.0F;
-      command.motor_cmd()[0].tau() = 0.75F;
-      command.motor_cmd().back().kd() = 2.0F;
-      state.motor_state()[0].q() = 0.5F;
-      feed("robot/lowcmd", command, 1.0);
-      feed("robot/lowstate", state, 2.0);
+      const auto sink = pju::withMotorFieldAliases(
+          topic, flatten_enabled, [&](const std::string& series, double value)
+          { samples[series].push_back({stamp, value}); });
+      pju::flattenMessage(message, [&](const std::string& field, double value)
+                          { sink(topic + "/" + field, value); });
+      enhancement.update(topic, message, sink, options);
+    };
+    LowCmd command;
+    LowState state;
+    command.motor_cmd()[0].q() = 1.5F;
+    command.motor_cmd()[0].kp() = 4.0F;
+    command.motor_cmd()[0].tau() = 0.75F;
+    command.motor_cmd().back().kd() = 2.0F;
+    state.motor_state()[0].q() = 0.5F;
+    state.motor_state()[0].dq() = -0.5F;
+    state.motor_state()[0].tau_est() = 3.0F;
+    feed("robot/lowcmd", command, 1.0);
+    feed("robot/lowstate", state, 2.0);
 
-      require(samples.at("robot/lowcmd/motor_cmd/00/kp").back().value == 4.0 &&
-                  samples.at("robot/lowstate/motor_state/00/q").back().value == 0.5,
-              "Every option combination must retain the original motor fields");
-      require(samples.count("motorstate*/q/00") == flatten_enabled &&
-                  samples.count("motorcmd*/kp/00") == flatten_enabled,
-              "Motor state and command aliases must depend only on Flatten");
-      require(samples.count("robot/lowstate/motor_state/00/tau_des*") == pd_enabled &&
-                  samples.count("motorstate*/tau_des*/00") == (pd_enabled && flatten_enabled),
-              "PD torques and their aliases must respect the independent options");
+    require(samples.at("robot/lowcmd/motor_cmd/00/kp").back().value == 4.0 &&
+                samples.at("robot/lowstate/motor_state/00/q").back().value == 0.5,
+            "Every option combination must retain the original motor fields");
+    require(samples.count("motorstate*/q/00") == flatten_enabled &&
+                samples.count("motorcmd*/kp/00") == flatten_enabled,
+            "Motor state and command aliases must depend only on Flatten");
+    require(samples.count("robot/lowstate/motor_state/00/tau_des*") == pd_enabled &&
+                samples.count("motorstate*/tau_des*/00") == (pd_enabled && flatten_enabled),
+            "PD torques and their aliases must respect the independent options");
+    for (const std::string field : {"power_des*", "power_est*"})
+    {
+      require(samples.count("robot/lowstate/motor_state/00/" + field) == power_enabled &&
+                  samples.count("motorstate*/" + field + "/00") == (power_enabled && flatten_enabled),
+              "Power and its aliases must respect the independent options");
+    }
+    if (power_enabled)
+    {
+      const auto& desired = samples.at("robot/lowstate/motor_state/00/power_des*");
+      const auto& estimated = samples.at("robot/lowstate/motor_state/00/power_est*");
+      require(desired.size() == 1 && desired.back().value == -2.375 && desired.back().stamp == 2.0 &&
+                  estimated.size() == 1 && estimated.back().value == -1.5 && estimated.back().stamp == 2.0,
+              "Power must use LowState velocity and timestamp, independently of PD torque output");
       if (flatten_enabled)
       {
-        const auto& q = samples.at("motorstate*/q/00").back();
-        const auto& kp = samples.at("motorcmd*/kp/00").back();
-        require(q.value == 0.5 && q.stamp == 2.0 && kp.value == 4.0 && kp.stamp == 1.0,
-                "Aliases must preserve values and the source message timestamp");
-        require(samples.at("motorcmd*/kd/" +
-                           std::to_string(command.motor_cmd().size() - 1)).back().value == 2.0,
-                "Flatten must include the last motor");
-      }
-      if (pd_enabled && flatten_enabled)
-      {
-        const auto& tau = samples.at("motorstate*/tau_des*/00");
-        require(tau.size() == 1 && tau.back().value == 4.75 && tau.back().stamp == 2.0,
-                "Flattened PD torque must preserve its derived marker and state timestamp");
-      }
-      state.motor_state()[0].q() = 1.0F;
-      feed("robot/lowstate", state, 3.0);
-      if (flatten_enabled)
-      {
-        const auto& q = samples.at("motorstate*/q/00");
-        require(q.size() == 2 && q.back().value == 1.0 && q.back().stamp == 3.0,
-                "Each source sample must append exactly one field alias");
+        require(samples.at("motorstate*/power_des*/00").back().value == -2.375 &&
+                    samples.at("motorstate*/power_est*/00").back().value == -1.5 &&
+                    samples.at("motorstate*/power_des*/00").back().stamp == 2.0,
+                "Power aliases must preserve the derived marker, value and state timestamp");
       }
     }
+    if (flatten_enabled)
+    {
+      const auto& q = samples.at("motorstate*/q/00").back();
+      const auto& kp = samples.at("motorcmd*/kp/00").back();
+      require(q.value == 0.5 && q.stamp == 2.0 && kp.value == 4.0 && kp.stamp == 1.0,
+              "Aliases must preserve values and the source message timestamp");
+      require(samples.at("motorcmd*/kd/" +
+                         std::to_string(command.motor_cmd().size() - 1)).back().value == 2.0,
+              "Flatten must include the last motor");
+    }
+    if (pd_enabled && flatten_enabled)
+    {
+      const auto& tau = samples.at("motorstate*/tau_des*/00");
+      require(tau.size() == 1 && tau.back().value == 4.75 && tau.back().stamp == 2.0,
+              "Flattened PD torque must preserve its derived marker and state timestamp");
+    }
+    state.motor_state()[0].q() = 1.0F;
+    feed("robot/lowstate", state, 3.0);
+    if (flatten_enabled)
+    {
+      const auto& q = samples.at("motorstate*/q/00");
+      require(q.size() == 2 && q.back().value == 1.0 && q.back().stamp == 3.0,
+              "Each source sample must append exactly one field alias");
+    }
+    if (power_enabled)
+    {
+      const auto& desired = samples.at("robot/lowstate/motor_state/00/power_des*");
+      require(desired.size() == 2 && desired.back().value == -1.375 && desired.back().stamp == 3.0,
+              "Power must reuse the held command and follow each state update");
+    }
   }
+}
+
+template <typename LowCmd, typename LowState> void checkJointPower()
+{
+  const pju::DataEnhancementOptions power_only{false, true};
+  pju::UnitreeDataEnhancement enhancement;
+  std::map<std::string, double> samples;
+  const pju::SampleSink sink = [&](const std::string& series, double value)
+  { samples[series] = value; };
+  LowCmd command;
+  LowState state;
+  auto& motor = command.motor_cmd()[0];
+  auto& feedback = state.motor_state()[0];
+  motor.q() = 1.5F;
+  motor.dq() = 10.0F; // Deliberately different from the measured velocity.
+  motor.kp() = 4.0F;
+  motor.kd() = 2.0F;
+  motor.tau() = 0.75F;
+  feedback.q() = 0.5F;
+  feedback.dq() = -0.5F;
+  feedback.tau_est() = 3.0F;
+  command.motor_cmd().back().tau() = 4.0F;
+  state.motor_state().back().dq() = 2.0F;
+  state.motor_state().back().tau_est() = 5.0F;
+
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.size() == state.motor_state().size() &&
+              samples.at("lowstate/motor_state/00/power_est*") == -1.5 &&
+              samples.count("lowstate/motor_state/00/power_des*") == 0,
+          "Estimated power must be available without a command");
+  samples.clear();
+  enhancement.update("lowcmd", command, sink, power_only);
+  require(samples.empty(), "Command arrivals must not emit power samples");
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.size() == 2 * state.motor_state().size() &&
+              samples.at("lowstate/motor_state/00/power_des*") == -12.875 &&
+              samples.at("lowstate/motor_state/00/power_est*") == -1.5,
+          "Desired power must include feed-forward, P and D terms and use measured velocity");
+  const std::string last = "lowstate/motor_state/" + std::to_string(state.motor_state().size() - 1);
+  require(samples.at(last + "/power_des*") == 8.0 && samples.at(last + "/power_est*") == 10.0,
+          "Power must include the last motor");
+  feedback.dq() = 0.0F;
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.at("lowstate/motor_state/00/power_des*") == 0.0 &&
+              samples.at("lowstate/motor_state/00/power_est*") == 0.0,
+          "A stationary joint must have zero mechanical power");
+  feedback.dq() = 0.5F;
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.at("lowstate/motor_state/00/power_des*") == 11.875 &&
+              samples.at("lowstate/motor_state/00/power_est*") == 1.5,
+          "Power must retain its sign and reuse the held command");
+  samples.clear();
+  motor.q() = 2.5F;
+  enhancement.update("lowcmd", command, sink, power_only);
+  require(samples.empty(), "A new command must wait for the next state to change power");
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.at("lowstate/motor_state/00/power_des*") == 13.875,
+          "The next power sample must use the updated command");
+  samples.clear();
+  enhancement.update("lowstate", state, sink, pju::DataEnhancementOptions{false, false});
+  require(samples.empty(), "Disabling both calculations must stop all derived samples");
+
+  if constexpr (std::is_same_v<LowCmd, unitree_hg::msg::dds_::LowCmd_>)
+  {
+    command.mode_pr() = 1;
+    enhancement.update("lowcmd", command, sink, power_only);
+    enhancement.update("lowstate", state, sink, power_only);
+    require(samples.count("lowstate/motor_state/00/power_des*") == 0 &&
+                samples.at("lowstate/motor_state/00/power_est*") == 1.5,
+            "Incompatible command coordinates must not suppress state-only estimated power");
+  }
+  enhancement.clear();
+  samples.clear();
+  enhancement.update("lowstate", state, sink, power_only);
+  require(samples.count("lowstate/motor_state/00/power_des*") == 0 &&
+              samples.at("lowstate/motor_state/00/power_est*") == 1.5,
+          "Resetting must discard the held command but still allow estimated power");
 }
 
 void checkNestedMotorAliases()
@@ -287,6 +392,8 @@ int main()
     checkTypeIsolation();
     checkEnhancementOptions<unitree_go::msg::dds_::LowCmd_, unitree_go::msg::dds_::LowState_>();
     checkEnhancementOptions<unitree_hg::msg::dds_::LowCmd_, unitree_hg::msg::dds_::LowState_>();
+    checkJointPower<unitree_go::msg::dds_::LowCmd_, unitree_go::msg::dds_::LowState_>();
+    checkJointPower<unitree_hg::msg::dds_::LowCmd_, unitree_hg::msg::dds_::LowState_>();
     checkNestedMotorAliases();
   }
   catch (const std::exception& error)

@@ -15,9 +15,14 @@ std::string topicNamespace(const std::string& topic)
   return separator == std::string::npos ? std::string{} : topic.substr(0, separator);
 }
 
+std::string motorStatePrefix(const std::string& topic, std::size_t index)
+{
+  return topic + "/motor_state/" + (index < 10 ? "0" : "") + std::to_string(index);
+}
+
 template <typename LowCmd, typename LowState>
-void emitTorques(const std::string& topic, const LowCmd& command, const LowState& state,
-                 const SampleSink& sink)
+void emitDesiredFields(const std::string& topic, const LowCmd& command, const LowState& state,
+                       const SampleSink& sink, const DataEnhancementOptions& options)
 {
   if constexpr (std::is_same_v<LowCmd, unitree_hg::msg::dds_::LowCmd_>)
   {
@@ -35,11 +40,18 @@ void emitTorques(const std::string& topic, const LowCmd& command, const LowState
     const auto& feedback = state.motor_state()[index];
     const double tau_p = cmd.kp() * (static_cast<double>(cmd.q()) - feedback.q());
     const double tau_d = cmd.kd() * (static_cast<double>(cmd.dq()) - feedback.dq());
-    const std::string prefix = topic + "/motor_state/" + (index < 10 ? "0" : "") +
-                               std::to_string(index);
-    sink(prefix + "/tau_des*", static_cast<double>(cmd.tau()) + tau_p + tau_d);
-    sink(prefix + "/tau_des_p*", tau_p);
-    sink(prefix + "/tau_des_d*", tau_d);
+    const double tau_des = static_cast<double>(cmd.tau()) + tau_p + tau_d;
+    const std::string prefix = motorStatePrefix(topic, index);
+    if (options.pd_torque_enabled)
+    {
+      sink(prefix + "/tau_des*", tau_des);
+      sink(prefix + "/tau_des_p*", tau_p);
+      sink(prefix + "/tau_des_d*", tau_d);
+    }
+    if (options.joint_power_enabled)
+    {
+      sink(prefix + "/power_des*", tau_des * feedback.dq());
+    }
   }
 }
 
@@ -116,8 +128,23 @@ void UnitreeDataEnhancement::updateCommand(TopicGroup<LowCmd, LowState>& group,
 template <typename LowCmd, typename LowState>
 void UnitreeDataEnhancement::updateState(TopicGroup<LowCmd, LowState>& group,
                                         const std::string& topic, const LowState& message,
-                                        const SampleSink& sink)
+                                        const SampleSink& sink,
+                                        const DataEnhancementOptions& options)
 {
+  if (!options.pd_torque_enabled && !options.joint_power_enabled)
+  {
+    return;
+  }
+  // Estimated power depends only on this feedback, even before a command arrives.
+  if (options.joint_power_enabled)
+  {
+    for (std::size_t index = 0; index < message.motor_state().size(); ++index)
+    {
+      const auto& motor = message.motor_state()[index];
+      sink(motorStatePrefix(topic, index) + "/power_est*",
+           static_cast<double>(motor.tau_est()) * motor.dq());
+    }
+  }
   group.states[topic] = message;
   // Multiple state topics in one namespace are ambiguous; never pick one at random.
   if (group.states.size() == 1)
@@ -134,37 +161,43 @@ void UnitreeDataEnhancement::updateState(TopicGroup<LowCmd, LowState>& group,
     }
     if (command != group.commands.end())
     {
-      emitTorques(topic, command->second, message, sink);
+      emitDesiredFields(topic, command->second, message, sink, options);
     }
   }
 }
 
 void UnitreeDataEnhancement::update(const std::string& topic,
                                     const unitree_go::msg::dds_::LowCmd_& message,
-                                    const SampleSink&)
+                                    const SampleSink&, const DataEnhancementOptions& options)
 {
-  updateCommand(go_groups_[topicNamespace(topic)], topic, message);
+  if (options.pd_torque_enabled || options.joint_power_enabled)
+  {
+    updateCommand(go_groups_[topicNamespace(topic)], topic, message);
+  }
 }
 
 void UnitreeDataEnhancement::update(const std::string& topic,
                                     const unitree_go::msg::dds_::LowState_& message,
-                                    const SampleSink& sink)
+                                    const SampleSink& sink, const DataEnhancementOptions& options)
 {
-  updateState(go_groups_[topicNamespace(topic)], topic, message, sink);
+  updateState(go_groups_[topicNamespace(topic)], topic, message, sink, options);
 }
 
 void UnitreeDataEnhancement::update(const std::string& topic,
                                     const unitree_hg::msg::dds_::LowCmd_& message,
-                                    const SampleSink&)
+                                    const SampleSink&, const DataEnhancementOptions& options)
 {
-  updateCommand(hg_groups_[topicNamespace(topic)], topic, message);
+  if (options.pd_torque_enabled || options.joint_power_enabled)
+  {
+    updateCommand(hg_groups_[topicNamespace(topic)], topic, message);
+  }
 }
 
 void UnitreeDataEnhancement::update(const std::string& topic,
                                     const unitree_hg::msg::dds_::LowState_& message,
-                                    const SampleSink& sink)
+                                    const SampleSink& sink, const DataEnhancementOptions& options)
 {
-  updateState(hg_groups_[topicNamespace(topic)], topic, message, sink);
+  updateState(hg_groups_[topicNamespace(topic)], topic, message, sink, options);
 }
 
 } // namespace plotjuggler_unitree_sdk2

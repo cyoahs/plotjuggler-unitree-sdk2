@@ -44,6 +44,7 @@ struct StreamConfig
   JoystickOutputMode joystick_output_mode = JoystickOutputMode::ParsedStructure;
   bool pd_torque_enabled = true;
   bool motor_fields_flatten_enabled = false;
+  bool joint_power_enabled = false;
   std::vector<TopicSelection> topics;
 };
 

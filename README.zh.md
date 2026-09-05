@@ -58,10 +58,11 @@ plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2
 
 `Joystick fields` 默认是 `Parsed structure`。这个模式会把 Unitree joystick 数据解析成 `wireless_remote/buttons/*`、`wireless_remote/axes/*`、`joystick/buttons/*`、`joystick/axes/*` 这类结构化字段，而不是只暴露原始字节或 key bitmask。
 
-`Data enhancement` 提供两个可以独立勾选的复选框：
+`Data enhancement` 提供三个可以独立勾选的复选框：
 
 - `PD torque (tau_des)`：默认勾选。结合 `LowCmd` 和 `LowState` 计算总力矩及 P/D 分量。
 - `Flatten`：默认不勾选。保留 `motor_state`、`motor_cmd` 原字段，并在第一层的 `motorstate*`、`motorcmd*` 分组下新增按字段优先排列的曲线，例如 `lowstate/motor_state/00/q` → `motorstate*/q/00`、`lowcmd/motor_cmd/00/kp` → `motorcmd*/kp/00`。数值、时间戳和电机编号保持一致；嵌套数组如 `motor_state/00/temperature/1` 对应 `motorstate*/temperature/00/1`。
+- `Joint power (des, est)`：默认不勾选。计算每个关节的期望功率和估计功率（有正负号的机械功率，单位 W），可独立于 PD 力矩输出选项开启。
 
 勾选 PD 力矩并同时订阅 `LowCmd` 和 `LowState` 后，为每个电机额外生成：
 
@@ -71,9 +72,18 @@ lowstate/motor_state/NN/tau_des_d* = kd * (dq_cmd - dq_state)
 lowstate/motor_state/NN/tau_des*   = tau_cmd + tau_des_p + tau_des_d
 ```
 
-字段名末尾的 `*` 标识计算得到的力矩数据。两项同时勾选时，也会新增 `motorstate*/tau_des*/00`、`motorstate*/tau_des_p*/00`、`motorstate*/tau_des_d*/00`。每个状态采样只输出一组力矩，优先使用同命名空间的 `lowcmd`；没有该话题时，仅在存在唯一命令话题时使用它。
+字段名末尾的 `*` 标识计算得到的力矩数据。PD 力矩和 Flatten 同时勾选时，也会新增 `motorstate*/tau_des*/00`、`motorstate*/tau_des_p*/00`、`motorstate*/tau_des_d*/00`。每个状态采样只输出一组力矩，优先使用同命名空间的 `lowcmd`；没有该话题时，仅在存在唯一命令话题时使用它。
 
-增强支持 Go2 和 HG 消息，按相同 SDK 类型、相同话题命名空间及电机下标配对；曲线位于实际状态话题的 `motor_state/NN/` 下。以 `LowState` 为采样基准：收到首条 `LowCmd` 后，仅在每条 `LowState` 到达时计算，以该 `LowState` 的本地接收时间记点。`LowCmd` 做零阶保持，始终使用当前已收到的最新命令，直到下一条命令替换；命令到达时只更新缓存，不追加力矩点，也不回算历史状态。一个命名空间内收到多个 `LowState` 话题时暂停增强，以免混用反馈；HG 的 `mode_pr` 也必须一致。两个复选框与遥控器解析选项一样分别保存在默认设置和布局 XML 中，运行中修改即可生效；旧版数据增强开关会恢复到 PD 力矩选项。关闭任一选项后停止追加对应数据，已有曲线保留；重新启用 PD 力矩或重启数据流会清空配对缓存，等待新的消息。
+增强支持 Go2 和 HG 消息，按相同 SDK 类型、相同话题命名空间及电机下标配对；曲线位于实际状态话题的 `motor_state/NN/` 下。以 `LowState` 为采样基准：收到首条 `LowCmd` 后，仅在每条 `LowState` 到达时计算，以该 `LowState` 的本地接收时间记点。`LowCmd` 做零阶保持，始终使用当前已收到的最新命令，直到下一条命令替换；命令到达时只更新缓存，不追加力矩点，也不回算历史状态。一个命名空间内收到多个 `LowState` 话题时暂停需要命令配对的计算，以免混用反馈；HG 的 `mode_pr` 也必须一致。三个复选框与遥控器解析选项一样分别保存在默认设置和布局 XML 中，运行中修改即可生效；旧版数据增强开关会恢复到 PD 力矩选项。关闭任一选项后停止追加对应数据，已有曲线保留；当 PD 力矩和关节功率都关闭后再启用计算，或重启数据流时，会清空命令配对缓存，等待新的命令。
+
+勾选关节功率后，按每条 `LowState` 的实测 `dq` 计算：
+
+```text
+lowstate/motor_state/NN/power_des* = tau_des * dq_state
+lowstate/motor_state/NN/power_est* = tau_est * dq_state
+```
+
+`tau_des` 包含前馈、P、D 三项，即使未勾选 PD 力矩输出也会在内部计算；它使用零阶保持的 `LowCmd`，按现有规则配对。`power_est*` 只依赖 `LowState`，无需等待命令。两种功率均以当前状态的时间戳记点，保留正负号，不取绝对值；静止关节的机械功率为零。同时勾选 Flatten 会新增第一层的 `motorstate*/power_des*/NN` 和 `motorstate*/power_est*/NN`。
 
 曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
 
