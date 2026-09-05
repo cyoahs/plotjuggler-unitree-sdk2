@@ -91,6 +91,7 @@ function(resolve_plotjuggler_dependency out_link_target)
 endfunction()
 
 add_library(unitree_message_flatten STATIC
+  src/unitree_data_enhancement.cpp
   src/unitree_message_flatten.cpp)
 target_include_directories(unitree_message_flatten
   PUBLIC
@@ -272,6 +273,12 @@ if(BUILD_TESTING)
       PRIVATE unitree_message_flatten)
     add_test(NAME unitree_message_flatten_smoke
       COMMAND unitree_message_flatten_smoke)
+    add_executable(unitree_data_enhancement_smoke
+      tests/unitree_data_enhancement_smoke.cpp)
+    target_link_libraries(unitree_data_enhancement_smoke
+      PRIVATE unitree_message_flatten)
+    add_test(NAME unitree_data_enhancement_smoke
+      COMMAND unitree_data_enhancement_smoke)
   endif()
 endif()
 

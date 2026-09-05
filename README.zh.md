@@ -50,13 +50,25 @@ plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2
 
 ### 3. 读取 Unitree DDS 数据
 
-在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length 和 joystick field mode。
+在 PlotJuggler 的 Streaming 面板选择 `Unitree SDK2 DDS`。齿轮按钮用于配置 DDS network interface、domain id、queue length、joystick field mode 和数据增强。
 
 <img src="docs/images/unitree-sdk2-dds-settings.png" alt="Unitree SDK2 DDS 设置面板" width="360">
 
 点击 `Start` 后插件会扫描 DDS publications，显示话题列表。支持的类型会排在上面并默认勾选；如果机器人或 DDS publisher 后启动，点击 `Refresh` 重新扫描。确认后插件开始订阅所选话题并写入 PlotJuggler 曲线。
 
 `Joystick fields` 默认是 `Parsed structure`。这个模式会把 Unitree joystick 数据解析成 `wireless_remote/buttons/*`、`wireless_remote/axes/*`、`joystick/buttons/*`、`joystick/axes/*` 这类结构化字段，而不是只暴露原始字节或 key bitmask。
+
+`Data enhancement` 默认开启，选中 `PD torque (tau_des, tau_des_p, tau_des_d)`。同时订阅 `LowCmd` 和 `LowState`，即可保留原始数据并为每个电机额外生成：
+
+```text
+lowstate/motor_state/NN/tau_des_p* = kp * (q_cmd - q_state)
+lowstate/motor_state/NN/tau_des_d* = kd * (dq_cmd - dq_state)
+lowstate/motor_state/NN/tau_des*   = tau_cmd + tau_des_p + tau_des_d
+```
+
+字段名末尾的 `*` 标识计算得到的增强数据。每个状态采样只输出一组力矩，优先使用同命名空间的 `lowcmd`；没有该话题时，仅在存在唯一命令话题时使用它。
+
+增强支持 Go2 和 HG 消息，按相同 SDK 类型、相同话题命名空间及电机下标配对；曲线位于实际状态话题的 `motor_state/NN/` 下。以 `LowState` 为采样基准：收到首条 `LowCmd` 后，仅在每条 `LowState` 到达时计算，以该 `LowState` 的本地接收时间记点。`LowCmd` 做零阶保持，始终使用当前已收到的最新命令，直到下一条命令替换；命令到达时只更新缓存，不追加力矩点，也不回算历史状态。一个命名空间内收到多个 `LowState` 话题时暂停增强，以免混用反馈；HG 的 `mode_pr` 也必须一致。该选项与遥控器解析选项一样保存在默认设置和布局 XML 中，运行中修改即可生效；未保存该选项的设置或布局默认开启，已保存的选择会保留。关闭后停止追加增强数据，已有曲线保留；重新启用或重启数据流会清空配对缓存，等待新的消息。
 
 曲线命名会去掉话题路径开头的 `unitree/` 和 `rt/` 两级，例如：
 

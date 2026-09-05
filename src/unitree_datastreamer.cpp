@@ -436,6 +436,18 @@ public:
     joystick_output_mode_->addItem("Raw and parsed",
                                    static_cast<int>(JoystickOutputMode::RawAndParsed));
     form->addRow("Joystick fields", joystick_output_mode_);
+
+    data_enhancement_ = new QComboBox();
+    data_enhancement_->addItem("Disabled", false);
+    data_enhancement_->addItem("PD torque (tau_des, tau_des_p, tau_des_d)", true);
+    data_enhancement_->setToolTip(
+        "Combine LowCmd and LowState from the same topic namespace.\n"
+        "Compute on each LowState using the latest LowCmd (zero-order hold).\n"
+        "tau_des_p = kp * (q_cmd - q_state)\n"
+        "tau_des_d = kd * (dq_cmd - dq_state)\n"
+        "tau_des = tau + tau_des_p + tau_des_d\n"
+        "Select both topics when starting the stream.");
+    form->addRow("Data enhancement", data_enhancement_);
     main_layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -456,6 +468,7 @@ public:
     config.clear_existing_data = clear_existing_data_->isChecked();
     config.joystick_output_mode =
         static_cast<JoystickOutputMode>(joystick_output_mode_->currentData().toInt());
+    config.data_enhancement_enabled = data_enhancement_->currentData().toBool();
     config.topics = previous_topics_;
     return config;
   }
@@ -463,6 +476,8 @@ public:
 private:
   void restoreSelection(const StreamConfig& previous)
   {
+    data_enhancement_->setCurrentIndex(
+        data_enhancement_->findData(previous.data_enhancement_enabled));
     const int joystick_index =
         joystick_output_mode_->findData(static_cast<int>(previous.joystick_output_mode));
     if (joystick_index >= 0)
@@ -476,6 +491,7 @@ private:
   QSpinBox* queue_length_ = nullptr;
   QCheckBox* clear_existing_data_ = nullptr;
   QComboBox* joystick_output_mode_ = nullptr;
+  QComboBox* data_enhancement_ = nullptr;
   std::vector<TopicSelection> previous_topics_;
 };
 
@@ -806,6 +822,7 @@ bool UnitreeDataStreamer::xmlSaveState(QDomDocument& doc, QDomElement& parent_el
   config.setAttribute("queue_length", config_.queue_length);
   config.setAttribute("clear_existing_data", config_.clear_existing_data);
   config.setAttribute("joystick_output_mode", static_cast<int>(config_.joystick_output_mode));
+  config.setAttribute("data_enhancement_enabled", config_.data_enhancement_enabled);
 
   QDomElement topics = doc.createElement("topics");
   for (const TopicSelection& selection : config_.topics)
@@ -830,10 +847,13 @@ bool UnitreeDataStreamer::xmlLoadState(const QDomElement& parent_element)
     return false;
   }
 
+  std::lock_guard<std::mutex> callback_lock(callback_mutex_);
+  data_enhancement_.clear();
   config_.network_interface = config.attribute("network_interface").toStdString();
   config_.domain_id = config.attribute("domain_id", "0").toInt();
   config_.queue_length = config.attribute("queue_length", "1").toInt();
   config_.clear_existing_data = boolAttribute(config, "clear_existing_data", true);
+  config_.data_enhancement_enabled = boolAttribute(config, "data_enhancement_enabled", true);
   config_.joystick_output_mode = static_cast<JoystickOutputMode>(
       config
           .attribute("joystick_output_mode",
@@ -891,7 +911,15 @@ void UnitreeDataStreamer::showSettingsDialog()
     return;
   }
 
-  config_ = dialog.config();
+  {
+    std::lock_guard<std::mutex> callback_lock(callback_mutex_);
+    const StreamConfig new_config = dialog.config();
+    if (config_.data_enhancement_enabled != new_config.data_enhancement_enabled)
+    {
+      data_enhancement_.clear();
+    }
+    config_ = new_config;
+  }
   saveDefaultSettings();
 }
 
@@ -918,6 +946,8 @@ void UnitreeDataStreamer::loadDefaultSettings()
   config_.domain_id = settings.value(group + "/domain_id", 0).toInt();
   config_.queue_length = settings.value(group + "/queue_length", 1).toInt();
   config_.clear_existing_data = settings.value(group + "/clear_existing_data", true).toBool();
+  config_.data_enhancement_enabled =
+      settings.value(group + "/data_enhancement_enabled", true).toBool();
   config_.joystick_output_mode = static_cast<JoystickOutputMode>(
       settings
           .value(group + "/joystick_output_mode",
@@ -937,6 +967,7 @@ void UnitreeDataStreamer::saveDefaultSettings() const
   settings.setValue(group + "/domain_id", config_.domain_id);
   settings.setValue(group + "/queue_length", config_.queue_length);
   settings.setValue(group + "/clear_existing_data", config_.clear_existing_data);
+  settings.setValue(group + "/data_enhancement_enabled", config_.data_enhancement_enabled);
   settings.setValue(group + "/joystick_output_mode",
                     static_cast<int>(config_.joystick_output_mode));
 
@@ -981,6 +1012,7 @@ bool UnitreeDataStreamer::start(QStringList* selected_datasources)
                                                      new_config.network_interface);
 
     clearState();
+    data_enhancement_.clear();
     config_ = std::move(new_config);
     saveDefaultSettings();
     start_time_ = std::chrono::steady_clock::now();
@@ -1027,6 +1059,7 @@ void UnitreeDataStreamer::shutdown()
   clearState();
 
   std::lock_guard<std::mutex> lock(callback_mutex_);
+  data_enhancement_.clear();
 }
 
 bool UnitreeDataStreamer::isRunning() const { return running_; }
@@ -1067,6 +1100,14 @@ template <typename Msg> void UnitreeDataStreamer::addSubscriber(const TopicSelec
           flattenMessage(message, flatten_options,
                          [this, &topic_prefix, stamp](const std::string& field, double value)
                          { appendSampleUnlocked(topic_prefix + "/" + field, stamp, value); });
+
+          if (config_.data_enhancement_enabled)
+          {
+            data_enhancement_.update(
+                topic_prefix, message,
+                [this, stamp](const std::string& series, double value)
+                { appendSampleUnlocked(series, stamp, value); });
+          }
 
           const uint64_t count = ++total_messages_;
           appendSampleUnlocked(topic_prefix + "/_message_count", stamp, static_cast<double>(count));

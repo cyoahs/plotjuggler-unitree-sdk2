@@ -50,13 +50,25 @@ plotjuggler --plugin_folders "$HOME/plotjuggler_plugins/plotjuggler-unitree-sdk2
 
 ### 3. Stream Unitree DDS Data
 
-In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, and joystick field mode.
+In the PlotJuggler Streaming panel, select `Unitree SDK2 DDS`. Use the gear button to configure DDS network interface, domain id, queue length, joystick field mode, and data enhancement.
 
 <img src="docs/images/unitree-sdk2-dds-settings.png" alt="Unitree SDK2 DDS settings dialog" width="360">
 
 Press `Start` to scan DDS publications and select topics from the discovered list. Supported types are sorted first and selected by default. If the robot or DDS publisher starts later, press `Refresh` to scan again. After confirmation, the plugin subscribes to the selected topics and writes PlotJuggler series.
 
 `Joystick fields` defaults to `Parsed structure`. In this mode, Unitree joystick data is decoded into fields such as `wireless_remote/buttons/*`, `wireless_remote/axes/*`, `joystick/buttons/*`, and `joystick/axes/*` instead of only exposing raw bytes or key bitmasks.
+
+`Data enhancement` is enabled by default with `PD torque (tau_des, tau_des_p, tau_des_d)` selected. Subscribe to both `LowCmd` and `LowState` to retain the original data and append three series per motor:
+
+```text
+lowstate/motor_state/NN/tau_des_p* = kp * (q_cmd - q_state)
+lowstate/motor_state/NN/tau_des_d* = kd * (dq_cmd - dq_state)
+lowstate/motor_state/NN/tau_des*   = tau_cmd + tau_des_p + tau_des_d
+```
+
+The trailing `*` marks derived fields. Each state sample produces one set of torques, preferring the sibling `lowcmd` topic; when it is absent, a single unambiguous command topic is used.
+
+Go2 and HG messages are paired by SDK family, topic namespace, and motor index. Series use the actual state topic path under `motor_state/NN/`. `LowState` drives sampling: after the first `LowCmd` arrives, torques are computed only on each `LowState`, using that state's local receive time. `LowCmd` uses a zero-order hold: the latest received command is reused until replaced. Command updates only refresh the cache; they do not append torque samples or recompute past states. Enhancement pauses if multiple `LowState` topics arrive in one namespace; HG `mode_pr` values must also match. Like joystick parsing, the option is saved in default settings and layout XML and takes effect when changed during streaming. Settings or layouts without this option default to enabled; saved choices are preserved. Disabling it stops appending derived samples and retains existing curves; enabling it again or restarting the stream clears the pairing cache and waits for fresh messages.
 
 Leading `unitree/` and `rt/` topic path components are removed from series names, for example:
 

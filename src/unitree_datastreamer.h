@@ -1,6 +1,6 @@
 #pragma once
 
-#include "plotjuggler_unitree_sdk2/unitree_message_flatten.h"
+#include "plotjuggler_unitree_sdk2/unitree_data_enhancement.h"
 
 #include <PlotJuggler/datastreamer_base.h>
 
@@ -42,6 +42,7 @@ struct StreamConfig
   int queue_length = 1;
   bool clear_existing_data = true;
   JoystickOutputMode joystick_output_mode = JoystickOutputMode::ParsedStructure;
+  bool data_enhancement_enabled = true;
   std::vector<TopicSelection> topics;
 };
 
@@ -83,6 +84,7 @@ private:
   std::chrono::steady_clock::time_point start_time_;
   std::mutex callback_mutex_;
   StreamConfig config_;
+  UnitreeDataEnhancement data_enhancement_;
   std::vector<std::unique_ptr<DdsSubscriber>> subscribers_;
   QAction* settings_action_ = nullptr;
   std::vector<QAction*> actions_;
