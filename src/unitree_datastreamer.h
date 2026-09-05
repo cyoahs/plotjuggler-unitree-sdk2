@@ -42,7 +42,8 @@ struct StreamConfig
   int queue_length = 1;
   bool clear_existing_data = true;
   JoystickOutputMode joystick_output_mode = JoystickOutputMode::ParsedStructure;
-  bool data_enhancement_enabled = true;
+  bool pd_torque_enabled = true;
+  bool motor_fields_flatten_enabled = false;
   std::vector<TopicSelection> topics;
 };
 

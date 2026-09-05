@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <type_traits>
+#include <utility>
 
 namespace plotjuggler_unitree_sdk2
 {
@@ -43,6 +44,60 @@ void emitTorques(const std::string& topic, const LowCmd& command, const LowState
 }
 
 } // namespace
+
+SampleSink withMotorFieldAliases(const std::string& topic, bool enabled, SampleSink sink)
+{
+  if (!enabled)
+  {
+    return sink;
+  }
+
+  return [prefix = topic + "/", sink = std::move(sink)](const std::string& series, double value)
+  {
+    sink(series, value);
+    if (series.compare(0, prefix.size(), prefix) != 0)
+    {
+      return;
+    }
+    const std::string field = series.substr(prefix.size());
+    std::size_t index_begin;
+    std::string alias_root;
+    if (field.rfind("motor_state/", 0) == 0)
+    {
+      index_begin = 12;
+      alias_root = "motorstate*/";
+    }
+    else if (field.rfind("motor_cmd/", 0) == 0)
+    {
+      index_begin = 10;
+      alias_root = "motorcmd*/";
+    }
+    else
+    {
+      return;
+    }
+    const auto index_end = field.find('/', index_begin);
+    if (index_end == std::string::npos || index_end == index_begin)
+    {
+      return;
+    }
+    const std::string index = field.substr(index_begin, index_end - index_begin);
+    if (index.find_first_not_of("0123456789") != std::string::npos)
+    {
+      return;
+    }
+    const std::string member = field.substr(index_end + 1);
+    const auto member_end = member.find('/');
+    if (member.empty() || member_end == 0)
+    {
+      return;
+    }
+    // Keep nested array indices after the motor index: temperature/NN/0.
+    const std::string alias = alias_root + member.substr(0, member_end) + "/" + index +
+                              (member_end == std::string::npos ? "" : member.substr(member_end));
+    sink(alias, value);
+  };
+}
 
 void UnitreeDataEnhancement::clear()
 {
